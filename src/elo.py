@@ -1,0 +1,82 @@
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Tuple
+
+def expected_score(r_home, r_away):
+    return 1 / (1 + 10 ** ((r_away - r_home) / 400))
+
+
+def update_elo(r_home, r_away, home_goals, away_goals, K=20):
+    exp_home = expected_score(r_home, r_away)
+    exp_away = 1 - exp_home
+
+    if home_goals > away_goals:
+        s_home, s_away = 1, 0
+    elif home_goals == away_goals:
+        s_home, s_away = 0.5, 0.5
+    else:
+        s_home, s_away = 0, 1
+
+    new_home = r_home + K * (s_home - exp_home)
+    new_away = r_away + K * (s_away - exp_away)
+
+    return new_home, new_away
+
+
+def match_result(home_goals: int, away_goals: int) -> Tuple[float, float]:
+    if home_goals > away_goals:
+        return 1.0, 0.0
+    if home_goals < away_goals:
+        return 0.0, 1.0
+    return 0.5, 0.5
+
+
+def margin_multiplier(goal_diff: int) -> float:
+    d = abs(int(goal_diff))
+    if d <= 1:
+        return 1.0
+    if d == 2:
+        return 1.5
+    if d == 3:
+        return 1.75
+    return 2.0
+
+def compute_elo_ratings(
+    df: pd.DataFrame,
+    K: float = 20.0,
+    home_adv: float = 0.0,
+    use_margin: bool = True,
+    init_rating: float = 1500.0,
+) -> List[Tuple[float, float]]:
+    """
+    Returns Elo ratings BEFORE each match in chronological order.
+    """
+    ratings: Dict[str, float] = {}
+    elo_history: List[Tuple[float, float]] = []
+
+    for _, row in df.iterrows():
+        home = row["home_team"]
+        away = row["away_team"]
+
+        r_home = float(ratings.get(home, init_rating))
+        r_away = float(ratings.get(away, init_rating))
+
+        # store pre-match ratings (no leakage)
+        elo_history.append((r_home, r_away))
+
+        exp_home = expected_score(r_home + home_adv, r_away)
+        exp_away = 1.0 - exp_home
+
+        s_home, s_away = match_result(int(row["home_goals"]), int(row["away_goals"]))
+
+        mult = 1.0
+        if use_margin:
+            mult = margin_multiplier(int(row["home_goals"]) - int(row["away_goals"]))
+
+        r_home_new = r_home + (K * mult) * (s_home - exp_home)
+        r_away_new = r_away + (K * mult) * (s_away - exp_away)
+
+        ratings[home] = r_home_new
+        ratings[away] = r_away_new
+
+    return elo_history

@@ -1,0 +1,236 @@
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import math
+from math import exp, factorial
+from typing import List, Tuple
+
+
+def fit_team_strengths(train: pd.DataFrame, eps: float = 1e-6):
+    """
+    Returns:
+      league_avg_home, league_avg_away,
+      attack (dict), defense (dict)
+
+    attack: goals scored per match / league avg total goals per match
+    defense: goals conceded per match / league avg total goals per match
+             (>1 means concedes more than average -> weaker defense)
+    """
+    league_avg_home = train["home_goals"].mean()
+    league_avg_away = train["away_goals"].mean()
+    league_avg_total = (league_avg_home + league_avg_away) / 2.0
+
+    # Goals scored by team (home + away)
+    home_scored = train.groupby("home_team")["home_goals"].sum()
+    away_scored = train.groupby("away_team")["away_goals"].sum()
+    scored = home_scored.add(away_scored, fill_value=0)
+
+    # Goals conceded by team (home conceded away_goals, away conceded home_goals)
+    home_conceded = train.groupby("home_team")["away_goals"].sum()
+    away_conceded = train.groupby("away_team")["home_goals"].sum()
+    conceded = home_conceded.add(away_conceded, fill_value=0)
+
+    # Matches played by team (home matches + away matches)
+    home_matches = train.groupby("home_team").size()
+    away_matches = train.groupby("away_team").size()
+    matches = home_matches.add(away_matches, fill_value=0)
+
+    avg_scored = scored / matches
+    avg_conceded = conceded / matches
+
+    attack = (avg_scored / (league_avg_total + eps)).to_dict()
+    defense = (avg_conceded / (league_avg_total + eps)).to_dict()
+
+    return league_avg_home, league_avg_away, attack, defense
+
+def poisson_pmf(k: int, lam: float) -> float:
+    if lam <= 0:
+        return 1.0 if k == 0 else 0.0
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+
+
+
+def match_outcome_probs_dc(lam_h: float, lam_a: float, rho: float, max_goals: int = 10) -> Tuple[float, float, float]:
+    """
+    Computes P(Home win), P(Draw), P(Away win) by summing DC-corrected scoreline probs.
+    """
+    P = scoreline_probs_dc(lam_h, lam_a, rho, max_goals=max_goals)
+
+    pH = 0.0
+    pD = 0.0
+    pA = 0.0
+    for hg in range(max_goals + 1):
+        for ag in range(max_goals + 1):
+            if hg > ag:
+                pH += P[hg][ag]
+            elif hg == ag:
+                pD += P[hg][ag]
+            else:
+                pA += P[hg][ag]
+    return pH, pD, pA
+
+
+def predict_lambdas(home_team: str, away_team: str,
+                    league_avg_home: float, league_avg_away: float,
+                    attack: dict, defense: dict):
+    ah = attack.get(home_team, 1.0)
+    dh = defense.get(home_team, 1.0)
+    aa = attack.get(away_team, 1.0)
+    da = defense.get(away_team, 1.0)
+
+    lam_home = league_avg_home * ah * da
+    lam_away = league_avg_away * aa * dh
+    return lam_home, lam_away
+
+def apply_elo_to_lambdas(lam_home: float, lam_away: float, elo_home: float, elo_away: float, beta: float = 0.15):
+    d = (elo_home - elo_away) / 400.0
+    lam_home_adj = lam_home * math.exp(beta * d)
+    lam_away_adj = lam_away * math.exp(-beta * d)
+
+    # safety floor
+    lam_home_adj = max(lam_home_adj, 0.05)
+    lam_away_adj = max(lam_away_adj, 0.05)
+
+    return lam_home_adj, lam_away_adj
+
+
+def scoreline_probs_dc(lam_h: float, lam_a: float, rho: float, max_goals: int = 10) -> List[List[float]]:
+    """
+    Returns matrix P[h][a] for h,a=0..max_goals with Dixon–Coles correction,
+    normalized to sum to 1 over the truncated grid.
+    """
+    P = [[0.0 for _ in range(max_goals + 1)] for _ in range(max_goals + 1)]
+    total = 0.0
+
+    for hg in range(max_goals + 1):
+        ph = poisson_pmf(hg, lam_h)
+        for ag in range(max_goals + 1):
+            pa = poisson_pmf(ag, lam_a)
+            tau = dixon_coles_tau(hg, ag, lam_h, lam_a, rho)
+            p = ph * pa * tau
+            if p < 0:
+                p = 0.0  # safety
+            P[hg][ag] = p
+            total += p
+
+    # normalize (because truncation + tau can change total mass)
+    if total > 0:
+        for hg in range(max_goals + 1):
+            for ag in range(max_goals + 1):
+                P[hg][ag] /= total
+
+    return P
+
+def top_k_scorelines_dc(lam_h: float, lam_a: float, rho: float, k: int = 5, max_goals: int = 10):
+    """
+    Top-k most likely scorelines under Dixon–Coles corrected distribution.
+    Returns [((hg,ag), prob), ...]
+    """
+    P = scoreline_probs_dc(lam_h, lam_a, rho, max_goals=max_goals)
+    pairs = []
+    for hg in range(max_goals + 1):
+        for ag in range(max_goals + 1):
+            pairs.append(((hg, ag), P[hg][ag]))
+    pairs.sort(key=lambda x: x[1], reverse=True)
+    return pairs[:k]
+
+def fit_team_strengths_home_away(train: pd.DataFrame, eps: float = 1e-6):
+    """
+    Home/Away team strengths.
+
+    Returns:
+      league_avg_home, league_avg_away,
+      attack_home, defense_home, attack_away, defense_away (all dicts)
+
+    Note: defense_* here is "weakness": >1 means concedes more than average.
+    """
+    league_avg_home = train["home_goals"].mean()
+    league_avg_away = train["away_goals"].mean()
+
+    # Home-side stats
+    home_scored = train.groupby("home_team")["home_goals"].sum()
+    home_conceded = train.groupby("home_team")["away_goals"].sum()
+    home_matches = train.groupby("home_team").size()
+
+    # Away-side stats
+    away_scored = train.groupby("away_team")["away_goals"].sum()
+    away_conceded = train.groupby("away_team")["home_goals"].sum()
+    away_matches = train.groupby("away_team").size()
+
+    teams = sorted(set(train["home_team"]) | set(train["away_team"]))
+
+    # per-match averages
+    home_attack_avg = (home_scored / home_matches).reindex(teams).fillna(league_avg_home)
+    home_def_avg = (home_conceded / home_matches).reindex(teams).fillna(league_avg_away)
+
+    away_attack_avg = (away_scored / away_matches).reindex(teams).fillna(league_avg_away)
+    away_def_avg = (away_conceded / away_matches).reindex(teams).fillna(league_avg_home)
+
+    # normalize relative to league averages for that side
+    attack_home = (home_attack_avg / (league_avg_home + eps)).to_dict()
+    defense_home = (home_def_avg / (league_avg_away + eps)).to_dict()
+
+    attack_away = (away_attack_avg / (league_avg_away + eps)).to_dict()
+    defense_away = (away_def_avg / (league_avg_home + eps)).to_dict()
+
+    return league_avg_home, league_avg_away, attack_home, defense_home, attack_away, defense_away
+
+
+def predict_lambdas_home_away(
+    home_team: str,
+    away_team: str,
+    league_avg_home: float,
+    league_avg_away: float,
+    attack_home: dict,
+    defense_home: dict,
+    attack_away: dict,
+    defense_away: dict,
+):
+    ah = attack_home.get(home_team, 1.0)
+    dh = defense_home.get(home_team, 1.0)
+    aa = attack_away.get(away_team, 1.0)
+    da = defense_away.get(away_team, 1.0)
+
+    lam_home = league_avg_home * ah * da
+    lam_away = league_avg_away * aa * dh
+    return lam_home, lam_away
+
+
+
+def dixon_coles_tau(hg: int, ag: int, lam_h: float, lam_a: float, rho: float) -> float:
+    """
+    Dixon–Coles correction factor tau for low-score dependence.
+    Only affects (0,0), (0,1), (1,0), (1,1).
+    """
+    if hg == 0 and ag == 0:
+        return 1.0 - (lam_h * lam_a * rho)
+    if hg == 0 and ag == 1:
+        return 1.0 + (lam_h * rho)
+    if hg == 1 and ag == 0:
+        return 1.0 + (lam_a * rho)
+    if hg == 1 and ag == 1:
+        return 1.0 - rho
+    return 1.0
+
+def match_outcome_probs(lam_h: float, lam_a: float, max_goals: int = 10):
+    """
+    Classic independent Poisson model:
+    P(Home win), P(Draw), P(Away win) by summing scorelines up to max_goals.
+    """
+    pH = pD = pA = 0.0
+    for hg in range(max_goals + 1):
+        ph = poisson_pmf(hg, lam_h)
+        for ag in range(max_goals + 1):
+            pa = poisson_pmf(ag, lam_a)
+            p = ph * pa
+            if hg > ag:
+                pH += p
+            elif hg == ag:
+                pD += p
+            else:
+                pA += p
+    s = pH + pD + pA
+    if s > 0:
+        pH, pD, pA = pH / s, pD / s, pA / s
+    return pH, pD, pA
