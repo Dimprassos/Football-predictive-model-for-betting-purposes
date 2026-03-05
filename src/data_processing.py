@@ -93,14 +93,15 @@ def _pick_best_or_avg_odds_row(row: pd.Series, available_cols: set[str]) -> tupl
     return _fair_probs_to_odds(p_avg)
 
 
-def load_and_merge_data() -> pd.DataFrame:
-    data_path = PROJECT_ROOT / "data" / "raw"
+def load_league_data(league_name: str) -> pd.DataFrame:
+    # 1. ΠΡΟΣΘΗΚΗ: Το path τώρα κατευθύνεται στον υποφάκελο της εκάστοτε λίγκας
+    data_path = PROJECT_ROOT / "data" / "raw" / league_name
     files = list(data_path.glob("*.csv"))
 
     if not files:
         raise FileNotFoundError(
             f"No CSV files found in: {data_path}\n"
-            f"Put your Serie A season CSVs there (e.g., I1_2012.csv, ...)."
+            f"Make sure you have downloaded the data for {league_name}."
         )
 
     dfs: list[pd.DataFrame] = []
