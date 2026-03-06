@@ -40,6 +40,15 @@ def margin_multiplier(goal_diff: int) -> float:
     if d == 3:
         return 1.75
     return 2.0
+def get_dynamic_init(ratings: Dict[str, float], default_init: float) -> float:
+    """
+    Calculates the entry Elo rating for a newly promoted team based on the 
+    average rating of the bottom 3 teams currently in the league.
+    """
+    if len(ratings) >= 5:
+        bottom_elos = sorted(ratings.values())[:3]
+        return float(sum(bottom_elos) / len(bottom_elos))
+    return float(default_init)
 
 def compute_elo_ratings(
     df: pd.DataFrame,
@@ -49,7 +58,8 @@ def compute_elo_ratings(
     init_rating: float = 1500.0,
 ) -> List[Tuple[float, float]]:
     """
-    Returns Elo ratings BEFORE each match in chronological order.
+    Returns Elo ratings BEFORE each match in chronological order,
+    using dynamic initialization for newly promoted teams.
     """
     ratings: Dict[str, float] = {}
     elo_history: List[Tuple[float, float]] = []
@@ -58,10 +68,17 @@ def compute_elo_ratings(
         home = row["home_team"]
         away = row["away_team"]
 
-        r_home = float(ratings.get(home, init_rating))
-        r_away = float(ratings.get(away, init_rating))
+        # Determine the current baseline for new teams
+        current_init = get_dynamic_init(ratings, init_rating)
 
-        # store pre-match ratings (no leakage)
+        r_home = float(ratings.get(home, current_init))
+        r_away = float(ratings.get(away, current_init))
+        
+        # Register new teams immediately to prevent double-counting as "new"
+        if home not in ratings: ratings[home] = r_home
+        if away not in ratings: ratings[away] = r_away
+
+        # Store pre-match ratings
         elo_history.append((r_home, r_away))
 
         exp_home = expected_score(r_home + home_adv, r_away)

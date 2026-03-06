@@ -83,11 +83,22 @@ def streaming_block_probs_home_away(
     ratings = {}
     history_matches = full_df[full_df["date"] < first_predict_date]
 
+    def get_dynamic_init(current_ratings):
+        if len(current_ratings) >= 5:
+            bottom_elos = sorted(current_ratings.values())[:3]
+            return float(sum(bottom_elos) / len(bottom_elos))
+        return float(init_rating)
+
     def update_ratings(matches_batch, current_ratings):
         for _, m in matches_batch.iterrows():
             h, a = m["home_team"], m["away_team"]
-            r_h = current_ratings.get(h, init_rating)
-            r_a = current_ratings.get(a, init_rating)
+            
+            dyn_init = get_dynamic_init(current_ratings)
+            r_h = current_ratings.get(h, dyn_init)
+            r_a = current_ratings.get(a, dyn_init)
+            
+            if h not in current_ratings: current_ratings[h] = r_h
+            if a not in current_ratings: current_ratings[a] = r_a
 
             exp_h = expected_score(r_h + home_adv, r_a)
             s_h, s_a = match_result(int(m["home_goals"]), int(m["away_goals"]))
@@ -110,8 +121,9 @@ def streaming_block_probs_home_away(
         for _, row in day_matches.iterrows():
             ht, at = row["home_team"], row["away_team"]
 
-            elo_h = ratings.get(ht, init_rating)
-            elo_a = ratings.get(at, init_rating)
+            dyn_init = get_dynamic_init(ratings)
+            elo_h = ratings.get(ht, dyn_init)
+            elo_a = ratings.get(at, dyn_init)
 
             lam_h, lam_a = predict_lambdas_home_away(
                 ht, at,
@@ -148,6 +160,7 @@ def streaming_block_probs_home_away(
         np.array(probs_mkt, dtype=float),
         np.array(aux, dtype=float),
     )
+    
 
 def build_meta_features(p_model, p_mkt, aux):
     p_mkt_fixed = p_mkt.copy()
@@ -173,12 +186,13 @@ def time_split_val(val_df: pd.DataFrame):
     return val_sorted.iloc[:mid].copy(), val_sorted.iloc[mid:].copy()
 
 def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05):
-    bets_placed = 0
-    won_bets = 0
-    total_invested = 0.0
-    total_return = 0.0
-    total_odds_taken = 0.0 
-
+    # Λεξικό για αποθήκευση αποτελεσμάτων ανά κατηγορία
+    stats = {
+        'Home (1)': {'count': 0, 'wins': 0, 'invested': 0, 'return': 0, 'odds_sum': 0},
+        'Draw (X)': {'count': 0, 'wins': 0, 'invested': 0, 'return': 0, 'odds_sum': 0},
+        'Away (2)': {'count': 0, 'wins': 0, 'invested': 0, 'return': 0, 'odds_sum': 0}
+    }
+    
     for i in range(len(probs)):
         p_h, p_d, p_a = probs[i]
         o_h, o_d, o_a = raw_odds[i]
@@ -186,35 +200,54 @@ def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05):
         if not (np.isfinite(o_h) and np.isfinite(o_d) and np.isfinite(o_a)):
             continue
 
-        ev_h = (p_h * o_h) - 1.0
-        ev_d = (p_d * o_d) - 1.0
-        ev_a = (p_a * o_a) - 1.0
-
-        best_ev = max(ev_h, ev_d, ev_a)
+        evs = [
+            (p_h * o_h - 1, 0, o_h, 'Home (1)'),
+            (p_d * o_d - 1, 1, o_d, 'Draw (X)'),
+            (p_a * o_a - 1, 2, o_a, 'Away (2)')
+        ]
+        
+        best_ev, choice, odds_taken, label = max(evs)
 
         if best_ev > edge_threshold:
-            bets_placed += 1
-            total_invested += 1.0 
-
-            if best_ev == ev_h:
-                choice, odds_taken = 0, o_h
-            elif best_ev == ev_d:
-                choice, odds_taken = 1, o_d
-            else:
-                choice, odds_taken = 2, o_a
-                
-            total_odds_taken += odds_taken
-
+            stats[label]['count'] += 1
+            stats[label]['invested'] += 1.0
+            stats[label]['odds_sum'] += odds_taken
+            
             if choice == y_true[i]:
-                won_bets += 1
-                total_return += odds_taken
+                stats[label]['wins'] += 1
+                stats[label]['return'] += odds_taken
 
-    profit = total_return - total_invested
-    roi = (profit / total_invested * 100) if total_invested > 0 else 0.0
-    avg_odds = (total_odds_taken / bets_placed) if bets_placed > 0 else 0.0
+    # Εκτύπωση αποτελεσμάτων ανά Market Segment
+    print(f"\n{'Market Segment':<15} | {'Bets':<5} | {'Win%':<7} | {'ROI%':<8}")
+    print("-" * 45)
     
-    return bets_placed, won_bets, profit, roi, avg_odds
-
+    total_bets = 0
+    total_wins = 0
+    total_inv = 0
+    total_ret = 0
+    total_odds_sum = 0
+    
+    for label, s in stats.items():
+        if s['count'] > 0:
+            win_pc = (s['wins'] / s['count']) * 100
+            roi = ((s['return'] - s['invested']) / s['invested']) * 100
+            print(f"{label:<15} | {s['count']:<5} | {win_pc:>6.1f}% | {roi:>7.2f}%")
+            
+            total_bets += s['count']
+            total_wins += s['wins']
+            total_inv += s['invested']
+            total_ret += s['return']
+            total_odds_sum += s['odds_sum']
+    
+    final_profit = total_ret - total_inv
+    final_roi = (final_profit / total_inv * 100) if total_inv > 0 else 0
+    avg_odds = (total_odds_sum / total_bets) if total_bets > 0 else 0
+    
+    print("-" * 45)
+    print(f"{'TOTAL':<15} | {int(total_inv):<5} | {'-':>7} | {final_roi:>7.2f}%")
+    
+    # ΕΠΙΣΤΡΟΦΗ ΤΙΜΩΝ ΓΙΑ ΤΗ ΣΥΝΕΧΕΙΑ ΤΗΣ MAIN
+    return total_bets, total_wins, final_profit, final_roi, avg_odds
 # ---------------------------
 # MAIN
 # ---------------------------
@@ -412,9 +445,18 @@ def main():
     # =========================================================================
     # ΕΞΩ ΑΠΟ ΤΗ ΛΟΥΠΑ: ΠΑΓΚΟΣΜΙΑ ΕΚΠΑΙΔΕΥΣΗ ΚΑΙ ΑΞΙΟΛΟΓΗΣΗ META-MODEL
     # =========================================================================
+    # [Προηγούμενος κώδικας: Συλλογή X_test_arr, y_test_arr κλπ μέσα στη λούπα]
+
+    # =========================================================================
+    # META-MODEL Evaluation (XGBOOST UPGRADE)
+    # =========================================================================
     print("\n" + "="*50)
-    print("=== META-MODEL Evaluation===")
+    print("=== META-MODEL Evaluation (XGBoost) ===")
     print("="*50)
+
+    from xgboost import XGBClassifier
+    import warnings
+    warnings.filterwarnings('ignore')
 
     # Μετατροπή των παγκόσμιων λιστών σε numpy arrays
     X_early_arr, y_early_arr = np.array(all_X_early), np.array(all_y_early)
@@ -425,25 +467,54 @@ def main():
     t_mkt_fixed_arr = np.array(all_t_mkt_fixed)
     raw_odds_arr = np.array(all_t_raw_odds)
 
-    # Tune C parameter globally
-    Cs = [0.1, 0.3, 1.0, 3.0, 10.0]
+    # Hyperparameter Tuning for XGBoost
+    learning_rates = [0.01, 0.05, 0.1]
+    max_depths = [3, 4, 5]
+    n_estimators_list = [100, 300, 500]
+
     best_meta = None
 
-    for C in Cs:
-        meta = LogisticRegression(solver="lbfgs", max_iter=3000, C=C)
-        meta.fit(X_early_arr, y_early_arr)
-        late_probs = meta.predict_proba(X_late_arr)
-        late_ll = log_loss(y_late_arr, late_probs)
+    print("Tuning XGBoost Hyperparameters on Validation Set. Please wait...")
+    for lr in learning_rates:
+        for md in max_depths:
+            for ne in n_estimators_list:
+                meta = XGBClassifier(
+                    n_estimators=ne,
+                    learning_rate=lr,
+                    max_depth=md,
+                    objective='multi:softprob',
+                    eval_metric='mlogloss',
+                    random_state=42,
+                    n_jobs=-1
+                )
+                meta.fit(X_early_arr, y_early_arr)
+                late_probs = meta.predict_proba(X_late_arr)
+                late_ll = log_loss(y_late_arr, late_probs)
 
-        if best_meta is None or late_ll < best_meta[0]:
-            best_meta = (late_ll, C)
+                if best_meta is None or late_ll < best_meta[0]:
+                    best_meta = (late_ll, lr, md, ne)
 
-    best_late_ll, best_C = best_meta
-    print("Best Global Meta C:", best_C, "Late VAL LogLoss:", round(best_late_ll, 4))
+    best_late_ll, best_lr, best_md, best_ne = best_meta
+    print(f"Best XGBoost Config -> LR: {best_lr}, Depth: {best_md}, Trees: {best_ne}")
+    print(f"Late VAL LogLoss: {round(best_late_ll, 4)}")
 
-    # Refit final Meta-Model on FULL VAL
-    meta_final = LogisticRegression(multi_class="multinomial", solver="lbfgs", max_iter=3000, C=best_C)
+    # Refit final Meta-Model on FULL VAL with the best parameters
+    meta_final = XGBClassifier(
+        n_estimators=best_ne,
+        learning_rate=best_lr,
+        max_depth=best_md,
+        objective='multi:softprob',
+        eval_metric='mlogloss',
+        random_state=42,
+        n_jobs=-1
+    )
     meta_final.fit(X_val_arr, y_val_arr)
+
+    # ------------------------------------------------------------
+    # FINAL TEST: evaluate base vs market vs meta
+    # ------------------------------------------------------------
+    print("\n--- Final Test Evaluation---")
+    # ... συνέχεια του κώδικα όπως ήταν ...
 
     # ------------------------------------------------------------
     # FINAL TEST: evaluate base vs market vs meta
