@@ -1,0 +1,9 @@
+{
+  "weights": {
+    "xgb": 0.0,
+    "mlp": 0.45,
+    "market": 0.5,
+    "base": 0.05
+  },
+  "late_val_logloss": 0.9577009501742819
+}
