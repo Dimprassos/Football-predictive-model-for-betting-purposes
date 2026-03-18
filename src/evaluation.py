@@ -14,18 +14,23 @@ def labels_from_df(df: pd.DataFrame) -> np.ndarray:
     return np.array(y, dtype=int)
 
 
-def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05, kelly_fraction=0.25, max_stake=0.05):
+def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05, kelly_fraction=0.25, max_stake=0.05, match_info=None, max_odds=10.0, max_ev=1.0):
     """
     Simulates betting using a Fractional Kelly Criterion.
     - edge_threshold: Minimum EV to place a bet.
     - kelly_fraction: Multiplier for the Kelly fraction (e.g., 0.25 for Quarter Kelly) to reduce variance.
     - max_stake: Maximum allowed percentage of bankroll to risk on a single bet (e.g., 0.05 = 5%).
+    - max_odds: Ignore bets with odds higher than this value (prevents extreme longshot bias).
+    - max_ev: Ignore bets with theoretical EV higher than this value (prevents model overconfidence traps).
     """
     stats = {
         "Home (1)": {"count": 0, "wins": 0, "invested": 0.0, "return": 0.0, "odds_sum": 0.0},
         "Draw (X)": {"count": 0, "wins": 0, "invested": 0.0, "return": 0.0, "odds_sum": 0.0},
         "Away (2)": {"count": 0, "wins": 0, "invested": 0.0, "return": 0.0, "odds_sum": 0.0},
     }
+    
+    if match_info is not None:
+        print("\n--- Detailed Betting Log (Test Set) ---")
 
     for i in range(len(probs)):
         p_h, p_d, p_a = probs[i]
@@ -43,6 +48,10 @@ def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05, kelly_f
 
         # Find the best option based on EV
         best_ev, choice, odds_taken, label, prob_taken = max(evs, key=lambda x: x[0])
+
+        # Sanity Checks: Αγνοούμε εξωφρενικές αποδόσεις και εξωφρενικά EV
+        if odds_taken > max_odds or best_ev > max_ev:
+            continue
 
         if best_ev > edge_threshold:
             # 1. Calculate Kelly Stake: f* = EV / (odds - 1)
@@ -65,6 +74,12 @@ def simulate_value_betting(probs, raw_odds, y_true, edge_threshold=0.05, kelly_f
             if choice == y_true[i]:
                 stats[label]["wins"] += 1
                 stats[label]["return"] += stake * odds_taken
+                
+            if match_info is not None:
+                m = match_info[i]
+                date_str = m['date'].strftime('%Y-%m-%d') if hasattr(m['date'], 'strftime') else m['date']
+                res_str = "WIN" if choice == y_true[i] else "LOSS"
+                print(f"[{date_str}] {m['home_team']} vs {m['away_team']} | Bet: {label} @ {odds_taken:.2f} | EV: {best_ev*100:.1f}% | Stake: {stake*100:.1f}% | {res_str}")
 
     print(f"\n{'Market Segment':<15} | {'Bets':<5} | {'Win%':<7} | {'ROI%':<8}")
     print("-" * 45)

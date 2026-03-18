@@ -181,6 +181,22 @@ def generate_upcoming_matchday_picks(
             result_pick = ["H", "D", "A"][np.argmax([pH, pD, pA])]
             top_score = top_k_scorelines_dc(lam_h, lam_a, rho=params["rho"], k=1, max_goals=6)
             (hg, ag), score_prob = top_score[0]
+            
+            # Υπολογισμός Value Bet για τους επερχόμενους αγώνες
+            oH, oD, oA = row["odds_home"], row["odds_draw"], row["odds_away"]
+            evs = []
+            if pd.notna(oH) and oH > 1.0: evs.append((pH * oH - 1, "1", oH))
+            if pd.notna(oD) and oD > 1.0: evs.append((pD * oD - 1, "X", oD))
+            if pd.notna(oA) and oA > 1.0: evs.append((pA * oA - 1, "2", oA))
+            
+            val_bet_str = "-"
+            if evs:
+                best_ev, b_pick, b_odds = max(evs, key=lambda x: x[0])
+                if best_ev > 0.05:  # Edge > 5% (ίδιο με το evaluation)
+                    stake = min((best_ev / (b_odds - 1)) * 0.25, 0.05) # Quarter Kelly με όριο 5%
+                    if stake >= 0.001:
+                        val_bet_str = f"{b_pick} @ {b_odds:.2f} (Stake: {stake*100:.1f}%)"
+
             upcoming_rows.append({
                 "League": league.upper(),
                 "Date": row["date"].strftime("%Y-%m-%d"),
@@ -192,6 +208,7 @@ def generate_upcoming_matchday_picks(
                 "Pick": result_pick,
                 "Score Pick": f"{hg}-{ag}",
                 "Score Prob": round(float(score_prob), 3),
+                "Value Bet": val_bet_str,
             })
 
     if len(upcoming_rows) == 0:

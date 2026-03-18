@@ -44,13 +44,13 @@ MLP_META_FILE = ARTIFACTS_DIR / f"best_mlp_{EXPERIMENT_NAME}.json"
 MLP_MODEL_FILE = ARTIFACTS_DIR / f"mlp_model_{EXPERIMENT_NAME}.pkl"
 BLEND_FILE = ARTIFACTS_DIR / f"best_blend_{EXPERIMENT_NAME}.json"
 
-USE_CACHED_ARTIFACTS = False 
-FORCE_RETUNE_LEAGUES = True    # Το αφήνεις False (έχουμε ήδη τέλεια Poisson/Elo params)
-FORCE_RETUNE_META = True        # Ενεργοποιεί το Optuna για το XGBoost
-FORCE_REFIT_META_MODEL = True   # Αναγκάζει το XGBoost να ξαναγίνει fit με τα νέα params
-FORCE_RETUNE_MLP = True         # Ενεργοποιεί το Optuna για το MLP
-FORCE_REFIT_MLP_MODEL = True    # Αναγκάζει το MLP να ξαναγίνει fit με τα νέα params
-FORCE_RETUNE_BLEND = True       # Απαραίτητο True, γιατί αφού άλλαξαν τα μοντέλα, αλλάζουν και τα ιδανικά βάρη
+USE_CACHED_ARTIFACTS = True 
+FORCE_RETUNE_LEAGUES = False    # Το αφήνεις False (έχουμε ήδη τέλεια Poisson/Elo params)
+FORCE_RETUNE_META = False        # Ενεργοποιεί το Optuna για το XGBoost
+FORCE_REFIT_META_MODEL = False   # Αναγκάζει το XGBoost να ξαναγίνει fit με τα νέα params
+FORCE_RETUNE_MLP = False         # Ενεργοποιεί το Optuna για το MLP
+FORCE_REFIT_MLP_MODEL = False    # Αναγκάζει το MLP να ξαναγίνει fit με τα νέα params
+FORCE_RETUNE_BLEND = False       # Απαραίτητο True, γιατί αφού άλλαξαν τα μοντέλα, αλλάζουν και τα ιδανικά βάρη
 
 TRAIN_CUT = "2024-07-01"
 TEST_CUT = "2025-07-01"
@@ -74,6 +74,7 @@ def main():
     all_t_probs_model = []
     all_t_mkt_fixed = []
     all_t_raw_odds = []
+    all_t_info = []
     per_league_test = {}
 
     for league in LEAGUES:
@@ -137,6 +138,7 @@ def main():
         all_t_probs_model.extend(t_probs_model)
         all_t_mkt_fixed.extend(t_mkt_fixed)
         all_t_raw_odds.extend(test[["odds_home", "odds_draw", "odds_away"]].values)
+        all_t_info.extend(test[["date", "home_team", "away_team"]].to_dict("records"))
         per_league_test[league] = {"y": np.array(t_y, dtype=int), "p_model": np.array(t_probs_model, dtype=float), "p_mkt": np.array(t_mkt_fixed, dtype=float)}
 
     if cached_params is None or FORCE_RETUNE_LEAGUES:
@@ -282,7 +284,7 @@ def main():
 
     print("\n--- Betting simulation - All Top 5 Leagues ---")
     threshold = 0.05
-    bets, wins, profit, roi, avg_odds = simulate_value_betting(t_probs_blend, raw_odds_arr, y_test_arr, edge_threshold=threshold)
+    bets, wins, profit, roi, avg_odds = simulate_value_betting(t_probs_blend, raw_odds_arr, y_test_arr, edge_threshold=threshold, match_info=all_t_info)
     print(f"Ensemble Strategy (Edge > {threshold*100}%):")
     print(f"Total Bets Placed: {bets} (out of {len(X_test_arr)} matches)")
     if bets > 0:
