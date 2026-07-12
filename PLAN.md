@@ -175,10 +175,12 @@ unit tests περνούν** (`python -m unittest tests.test_core_behaviors`, 202
 12. Το `.gitignore` αγνοεί `plan.md` (πεζά)· σε Linux το `PLAN.md` ΘΑ γίνει
     tracked. Αποφάσισε συνειδητά: αν το θες versioned (προτείνεται, αφού το
     AGENTS.md το κάνει reference), άφησέ το ως έχει· αλλιώς άλλαξε το pattern.
-13. Πριν από demo/screenshots: **δεν υπάρχουν artifacts στο δίσκο** — τρέξε
-    `python scripts/main.py`, μετά `scripts/train_footynet.py` και
-    `scripts/train_context_variant.py`, αλλιώς η σελίδα Πρόβλεψης θα έχει κενή
-    λίστα experiments.
+13. ✅ [Έγινε 2026-07-12] Artifacts δημιουργήθηκαν — πλήρες run και των τριών
+    (canonical → FootyNet → context variant), log στο `artifacts/step3_run.log`.
+    Αποτελέσματα test (log loss): LogReg 0.9742 ≈ αγορά 0.9746 = ensemble·
+    FootyNet 0.9795, stack 0.9747· context-aware XGB (market+xG) 0.9866 —
+    τα xG features δεν βελτιώνουν έναντι της αγοράς. Το app σερβίρει και τα 3
+    experiments.
 14. ✅ [Έγινε 2026-07-12] Τα προαιρετικά external CSV λείπανε τοπικά — κατέβηκαν
     43.176 understat γραμμές (2014-2026) αφού διορθώθηκε το scraper (το
     understat.com άλλαξε το `teams` payload σε list — commit `d7928cc`).
@@ -225,7 +227,7 @@ argmax και γιατί αυτό είναι artifact του argmax και όχ�
 1. ✅ [Έγινε 2026-07-12] ~30′ γρήγορα fixes: Β1.1 (user_retrain στην πρόβλεψη), Β1.3 (cache invalidation), Β3.11.
 2. ✅ [Έγινε 2026-07-12] ~1–2 ώρες: Β1.2 (weather inputs στο UI), Β2.7 (logreg cache),
    Β2.8 (sys.exit + διόρθωση CLI που φόρτωνε λάθος experiment).
-3. Τρέξε πλήρες pipeline + FootyNet + context variant → artifacts για demo (Β3.13, Β3.14).
+3. ✅ [Έγινε 2026-07-12] Τρέξε πλήρες pipeline + FootyNet + context variant → artifacts για demo (Β3.13, Β3.14).
 4. Γράψε τη λίστα Απαιτήσεων (FR/NFR) — ξεκλειδώνει Σχεδίαση, Ικανοποίηση, Επίδειξη.
 5. Διαγράμματα + screenshots + κείμενο αναφοράς κατά τον πίνακα του Γ.
 6. Προαιρετικά (μόνο αν μένει χρόνος): Β2.5 (ενοποίηση Elo), Β2.6 (σπάσιμο trainer), Β2.9 (docs/αναφορές).
