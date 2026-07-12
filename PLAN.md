@@ -179,10 +179,16 @@ unit tests περνούν** (`python -m unittest tests.test_core_behaviors`, 202
     `python scripts/main.py`, μετά `scripts/train_footynet.py` και
     `scripts/train_context_variant.py`, αλλιώς η σελίδα Πρόβλεψης θα έχει κενή
     λίστα experiments.
-14. Τα προαιρετικά external CSV (understat κ.λπ.) επίσης λείπουν τοπικά
-    (`data/external/` έχει μόνο README) — αν θες το context-aware experiment να
-    δείχνει κάτι διαφορετικό από την αγορά στο demo, τρέξε πρώτα
-    `python src/update_understat.py`.
+14. ✅ [Έγινε 2026-07-12] Τα προαιρετικά external CSV λείπανε τοπικά — κατέβηκαν
+    43.176 understat γραμμές (2014-2026) αφού διορθώθηκε το scraper (το
+    understat.com άλλαξε το `teams` payload σε list — commit `d7928cc`).
+
+15. ✅ [Απόφαση 2026-07-12] **Tuning με ντετερμινιστικό grid, χωρίς optuna.**
+    Το optuna μένει προαιρετικό και εκτός requirements (το grid fallback είναι
+    αναπαραγώγιμο· το ακριβό κομμάτι —per-league base tuning— δεν χρησιμοποιεί
+    optuna ούτως ή άλλως). Τα docstrings (trainer/config/retrain_runner)
+    ευθυγραμμίστηκαν να μην υπόσχονται Optuna. Στην Υλοποίηση της αναφοράς:
+    «grid search· Optuna υποστηρίζεται προαιρετικά αν εγκατασταθεί».
 
 ---
 

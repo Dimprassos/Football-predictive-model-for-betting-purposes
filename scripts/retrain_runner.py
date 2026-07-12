@@ -5,8 +5,9 @@ The thesis cites the metrics of the canonical experiment
 without ever overwriting those numbers, this runner:
 
   1. seeds the target experiment's tuned-hyperparameter caches from the
-     canonical experiment (so retraining reuses the expensive Optuna tuning and
-     only *refits* the models on the current — possibly user-extended — data);
+     canonical experiment (so retraining reuses the expensive hyper-parameter
+     tuning and only *refits* the models on the current — possibly
+     user-extended — data);
   2. runs the standard training pipeline under the target experiment name.
 
 The canonical artifacts are left untouched.
