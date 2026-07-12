@@ -52,6 +52,7 @@ class ExperimentConfig:
     force_refit_meta_model: bool = True
     force_retune_mlp: bool = False
     force_refit_mlp_model: bool = True
+    force_retune_logreg: bool = False
     force_retune_blend: bool = True
     allow_partial_param_cache: bool = False
     random_state: int = 42

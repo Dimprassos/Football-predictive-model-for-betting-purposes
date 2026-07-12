@@ -10,6 +10,7 @@ import warnings
 
 import numpy as np
 
+from src.config import FINAL_CONFIG
 from src.predictor import get_league_runtime_state, load_runtime_artifacts, predict_custom_match
 
 
@@ -37,7 +38,13 @@ def pick_team(teams, prompt):
 
 def main():
     print("=== Interactive Match Predictor ===")
-    params, meta_model, meta_cfg, mlp_model, mlp_meta, logreg_model, logreg_meta, blend_cfg = load_runtime_artifacts()
+    try:
+        # The canonical experiment is what scripts/main.py trains and the thesis cites.
+        (params, meta_model, meta_cfg, mlp_model, mlp_meta,
+         logreg_model, logreg_meta, blend_cfg) = load_runtime_artifacts(FINAL_CONFIG)
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}")
+        return
     leagues = ["england", "spain", "italy", "germany", "france"]
 
     while True:

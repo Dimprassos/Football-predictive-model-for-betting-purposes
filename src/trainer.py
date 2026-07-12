@@ -776,6 +776,7 @@ def run_training_pipeline(config: ExperimentConfig = DEFAULT_CONFIG):
     cached_params = load_json_if_exists(config.params_file) if config.use_cached_artifacts and can_load_param_cache and not config.force_retune_leagues else None
     cached_meta = load_json_if_exists(config.meta_file) if compatible_cache and not config.force_retune_meta else None
     cached_mlp = load_json_if_exists(config.mlp_meta_file) if compatible_cache and not config.force_retune_mlp else None
+    cached_logreg = load_json_if_exists(config.logreg_meta_file) if compatible_cache and not config.force_retune_logreg else None
     cached_blend = load_json_if_exists(config.blend_file) if compatible_cache and not config.force_retune_blend else None
     league_best_params = {} if cached_params is None else cached_params
     all_X_early, all_y_early = [], []
@@ -1205,39 +1206,44 @@ def run_training_pipeline(config: ExperimentConfig = DEFAULT_CONFIG):
         save_pickle(config.mlp_model_file, mlp_model)
         print(f"Saved trained MLP model to: {config.mlp_model_file}")
 
-    logreg_cfg = tune_logreg_hyperparams(
-        X_early_arr[:, MARKET_PLUS_CONTEXT_COLS],
-        y_early_arr,
-        X_late_arr[:, MARKET_PLUS_CONTEXT_COLS],
-        y_late_arr,
-    )
-    logreg_subset, logreg_subset_rows = tune_feature_subset(
-        lambda: make_logreg_pipeline(logreg_cfg["C"]),
-        X_early_arr,
-        y_early_arr,
-        X_late_arr,
-        y_late_arr,
-        learned_model_feature_sets,
-        temperature_scale=True,
-    )
-    logreg_feature_columns = [FEATURE_COLUMNS[i] for i in logreg_subset["cols"]]
+    if cached_logreg is not None and cached_logreg.get("feature_columns"):
+        logreg_cfg = cached_logreg
+        print("Using cached Logistic Regression hyperparameters...")
+    else:
+        logreg_cfg = tune_logreg_hyperparams(
+            X_early_arr[:, MARKET_PLUS_CONTEXT_COLS],
+            y_early_arr,
+            X_late_arr[:, MARKET_PLUS_CONTEXT_COLS],
+            y_late_arr,
+        )
+        logreg_subset, logreg_subset_rows = tune_feature_subset(
+            lambda: make_logreg_pipeline(logreg_cfg["C"]),
+            X_early_arr,
+            y_early_arr,
+            X_late_arr,
+            y_late_arr,
+            learned_model_feature_sets,
+            temperature_scale=True,
+        )
+        logreg_cfg["feature_set"] = logreg_subset["name"]
+        logreg_cfg["feature_columns"] = [FEATURE_COLUMNS[i] for i in logreg_subset["cols"]]
+        logreg_cfg["late_val_logloss"] = float(logreg_subset["late_val_logloss"])
+        logreg_cfg["temperature"] = float(logreg_subset["temperature"])
+        logreg_cfg["feature_subset_scores"] = [
+            {
+                "name": row["name"],
+                "late_val_logloss": row["late_val_logloss"],
+                "feature_columns": [FEATURE_COLUMNS[i] for i in row["cols"]],
+            }
+            for row in logreg_subset_rows
+        ]
+        save_json(config.logreg_meta_file, logreg_cfg)
+        print(f"Saved LogReg hyperparams to: {config.logreg_meta_file}")
+    logreg_feature_columns = logreg_cfg["feature_columns"]
     logreg_cols = feature_indices(logreg_feature_columns)
-    logreg_cfg["feature_set"] = logreg_subset["name"]
-    logreg_cfg["feature_columns"] = logreg_feature_columns
-    logreg_cfg["late_val_logloss"] = float(logreg_subset["late_val_logloss"])
-    logreg_cfg["temperature"] = float(logreg_subset["temperature"])
-    logreg_cfg["feature_subset_scores"] = [
-        {
-            "name": row["name"],
-            "late_val_logloss": row["late_val_logloss"],
-            "feature_columns": [FEATURE_COLUMNS[i] for i in row["cols"]],
-        }
-        for row in logreg_subset_rows
-    ]
     print(f"LogReg feature set: {logreg_cfg['feature_set']} ({len(logreg_cols)} features)")
     logreg_final = make_logreg_pipeline(logreg_cfg["C"])
     logreg_final.fit(X_val_arr[:, logreg_cols], y_val_arr)
-    save_json(config.logreg_meta_file, logreg_cfg)
     save_pickle(config.logreg_model_file, logreg_final)
 
     xgb_late_model = fit_xgb_model(X_early_arr[:, xgb_cols], y_early_arr, best_meta_cfg)

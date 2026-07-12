@@ -9,7 +9,6 @@ predict-match CLI.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -35,14 +34,19 @@ def load_runtime_artifacts(config: ExperimentConfig = DEFAULT_CONFIG):
     """Load every saved artifact for an experiment needed to predict at serve time.
 
     Returns the tuple ``(params, meta_model, meta_cfg, mlp_model, mlp_meta,
-    logreg_model, logreg_meta, blend_cfg)``. Exits with a helpful message if the
-    required params or XGBoost model are missing (i.e. the pipeline was never run).
+    logreg_model, logreg_meta, blend_cfg)``. Raises :class:`FileNotFoundError` with
+    a helpful message if the required params or XGBoost model are missing (i.e. the
+    pipeline was never run) — callers (app, CLI) surface it to the user.
     """
     params = load_json_if_exists(config.params_file)
     if params is None:
-        sys.exit("Error: Parameters file not found. Run scripts/main.py first.")
+        raise FileNotFoundError(
+            f"Parameters file not found: {config.params_file}. Run scripts/main.py first."
+        )
     if not config.model_file.exists():
-        sys.exit("Error: XGBoost model not found. Run scripts/main.py first.")
+        raise FileNotFoundError(
+            f"XGBoost model not found: {config.model_file}. Run scripts/main.py first."
+        )
 
     meta_model = XGBClassifier()
     meta_model.load_model(str(config.model_file))

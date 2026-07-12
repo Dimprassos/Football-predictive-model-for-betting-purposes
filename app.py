@@ -27,6 +27,7 @@ import csv
 import subprocess
 import sys
 import warnings
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -131,14 +132,21 @@ CONFIDENCE_LABELS = {
     "en": {"high": "High", "medium": "Medium", "low": "Low"},
 }
 
+# The user's own retrain, produced from the Training page (scripts/retrain_runner.py).
+# Same setup as the canonical experiment; only the experiment name differs, so the
+# config resolves to the user_retrain artifact files.
+USER_RETRAIN_CONFIG = replace(FINAL_CONFIG, experiment_name="user_retrain")
+
 # Prediction experiments the user can pick between. The canonical model is
 # market-dominated; the context-aware variant is forced to use understat/form
 # features so the reconstructed pre-match context actually affects the prediction.
+# user_retrain appears only once its artifacts exist (see available_predict_experiments).
 PREDICT_EXPERIMENTS = {
     FINAL_CONFIG.experiment_name: FINAL_CONFIG,
     CONTEXT_AWARE_CONFIG.experiment_name: CONTEXT_AWARE_CONFIG,
     PLAYER_CONTEXT_CONFIG.experiment_name: PLAYER_CONTEXT_CONFIG,
     FOOTYNET_CONFIG.experiment_name: FOOTYNET_CONFIG,
+    USER_RETRAIN_CONFIG.experiment_name: USER_RETRAIN_CONFIG,
 }
 EXPERIMENT_LABELS = {
     "el": {
@@ -146,12 +154,14 @@ EXPERIMENT_LABELS = {
         CONTEXT_AWARE_CONFIG.experiment_name: "Πλούσιο σε features (understat/form)",
         PLAYER_CONTEXT_CONFIG.experiment_name: "Με εντεκάδες (lineup strength)",
         FOOTYNET_CONFIG.experiment_name: "Βαθιά μάθηση (LSTM / FootyNet)",
+        USER_RETRAIN_CONFIG.experiment_name: "Επανεκπαίδευση χρήστη (user_retrain)",
     },
     "en": {
         FINAL_CONFIG.experiment_name: "Market (canonical)",
         CONTEXT_AWARE_CONFIG.experiment_name: "Feature-rich (understat/form)",
         PLAYER_CONTEXT_CONFIG.experiment_name: "Lineup-aware (lineup strength)",
         FOOTYNET_CONFIG.experiment_name: "Deep learning (LSTM / FootyNet)",
+        USER_RETRAIN_CONFIG.experiment_name: "User retrain (user_retrain)",
     },
 }
 
@@ -214,6 +224,18 @@ TEXT = {
         "prediction_model": "Μοντέλο πρόβλεψης",
         "prediction_model_help": ("Το backend υπολογίζει όλα τα μοντέλα· εδώ επιλέγεις "
                                   "ποιο θα προβληθεί ως κύρια πρόβλεψη."),
+        "weather_header": "Καιρικές συνθήκες (προαιρετικό)",
+        "weather_enable": "Χρήση χειροκίνητων καιρικών συνθηκών",
+        "weather_help": ("Οι τιμές τροφοδοτούν τα features καιρού του μοντέλου "
+                         "(θερμοκρασία, άνεμος, βροχόπτωση, σφοδρότητα). Επηρεάζουν "
+                         "κυρίως τα πειράματα που χρησιμοποιούν external-context "
+                         "features — το canonical μοντέλο της αγοράς τα αγνοεί σε "
+                         "μεγάλο βαθμό."),
+        "weather_temperature": "Θερμοκρασία (°C)",
+        "weather_wind": "Άνεμος (km/h)",
+        "weather_precipitation": "Βροχόπτωση (mm)",
+        "weather_active": ("Καιρός ενεργός: {temp:.1f}°C, άνεμος {wind:.0f} km/h, "
+                           "βροχή {rain:.1f} mm"),
         "player_context_header": "Player context / ενδεκάδες και απουσίες",
         "player_context_enable": "Χρήση χειροκίνητων ενδεκάδων/απουσιών",
         "player_context_match_date": "Ημερομηνία αγώνα για rolling player strength",
@@ -380,6 +402,16 @@ TEXT = {
         "prediction_model": "Prediction model",
         "prediction_model_help": ("The backend computes every model; here you choose "
                                   "which one is shown as the main prediction."),
+        "weather_header": "Weather conditions (optional)",
+        "weather_enable": "Use manual weather conditions",
+        "weather_help": ("The values feed the model's weather features (temperature, "
+                         "wind, precipitation, severity). They mainly affect experiments "
+                         "that use external-context features — the canonical market "
+                         "model largely ignores them."),
+        "weather_temperature": "Temperature (°C)",
+        "weather_wind": "Wind (km/h)",
+        "weather_precipitation": "Precipitation (mm)",
+        "weather_active": "Weather active: {temp:.1f}°C, wind {wind:.0f} km/h, rain {rain:.1f} mm",
         "player_context_header": "Player context / lineups and absences",
         "player_context_enable": "Use manual lineups/absences",
         "player_context_match_date": "Match date for rolling player strength",
@@ -544,7 +576,8 @@ def load_artifacts(exp_name: str = CANONICAL_EXP):
 
 
 @st.cache_resource(show_spinner=True)
-def load_state(league: str, exp_name: str = CANONICAL_EXP):
+def load_state(league: str, exp_name: str = CANONICAL_EXP, token: str = ""):
+    """League runtime state; ``token`` busts the cache when user-added data changes."""
     params = load_artifacts(exp_name)[0]
     return get_league_runtime_state(league, params)
 
@@ -562,7 +595,7 @@ def load_footynet_sequences(league: str, token: str):
     """Per-team last-K match sequences for one league (rebuilt when the dataset changes)."""
     from src.sequence_data import build_team_sequences
 
-    return build_team_sequences(load_state(league, CANONICAL_EXP).played_df)
+    return build_team_sequences(load_state(league, CANONICAL_EXP, token).played_df)
 
 
 def _player_context_token() -> str:
@@ -702,12 +735,12 @@ def run_prediction(league: str, home: str, away: str, oh: float, od: float, oa: 
         from src.footynet_serve import predict_footynet_fixture
 
         model, ckpt = load_footynet_model()
-        state = load_state(league, CANONICAL_EXP)
+        state = load_state(league, CANONICAL_EXP, _dataset_token())
         return predict_footynet_fixture(
             home, away, oh, od, oa, state=state, model=model, ckpt=ckpt,
             team_sequences=load_footynet_sequences(league, _dataset_token()),
         )
-    state = load_state(league, exp_name)
+    state = load_state(league, exp_name, _dataset_token())
     (_params, meta_model, meta_cfg, mlp_model, mlp_meta,
      logreg_model, logreg_meta, blend_cfg) = load_artifacts(exp_name)
     return predict_custom_match(
@@ -881,6 +914,33 @@ def _render_player_context_preview(context: dict | None, diagnostics: pd.DataFra
     )
 
 
+def weather_controls() -> dict | None:
+    """Optional manual weather conditions for the fixture (user-provided match context).
+
+    Returns the ``context`` overrides that ``compute_pre_match_extra_features`` reads
+    (``temperature_c``/``wind_kph``/``precipitation_mm``; ``weather_severity`` is
+    derived from them downstream), or None when the controls are disabled.
+    """
+    with st.expander(t("weather_header")):
+        enabled = st.checkbox(t("weather_enable"), value=False, help=t("weather_help"))
+        if not enabled:
+            return None
+        c1, c2, c3 = st.columns(3)
+        temperature = c1.number_input(
+            t("weather_temperature"), min_value=-30.0, max_value=50.0, value=15.0, step=0.5)
+        wind = c2.number_input(
+            t("weather_wind"), min_value=0.0, max_value=150.0, value=0.0, step=1.0)
+        rain = c3.number_input(
+            t("weather_precipitation"), min_value=0.0, max_value=100.0, value=0.0, step=0.5)
+        st.caption(t("weather_active", temp=temperature, wind=wind, rain=rain))
+        return {
+            "weather_available": 1.0,
+            "temperature_c": float(temperature),
+            "wind_kph": float(wind),
+            "precipitation_mm": float(rain),
+        }
+
+
 def player_context_controls(league: str, home: str, away: str) -> dict | None:
     """Optional Streamlit controls that build runtime player context for prediction."""
     context: dict | None = None
@@ -1026,16 +1086,20 @@ def page_predict():
         st.warning(t("same_team_warning"))
         return
 
-    player_context = (
-        None if exp_name == FOOTYNET_CONFIG.experiment_name
-        else player_context_controls(league, home, away)
-    )
+    if exp_name == FOOTYNET_CONFIG.experiment_name:
+        # FootyNet's serve path rebuilds its own inputs; manual context is not used.
+        prediction_context = None
+    else:
+        weather_context = weather_controls()
+        player_context = player_context_controls(league, home, away)
+        merged_context = {**(weather_context or {}), **(player_context or {})}
+        prediction_context = merged_context or None
 
     if not st.button(t("predict_button"), type="primary"):
         return
 
     try:
-        res = run_prediction(league, home, away, oh, od, oa, exp_name, context=player_context)
+        res = run_prediction(league, home, away, oh, od, oa, exp_name, context=prediction_context)
     except Exception as exc:  # noqa: BLE001 - surface any backend error to the UI
         st.error(t("prediction_error", exc=exc))
         return
@@ -1213,7 +1277,11 @@ def page_train():
                 log_box.code("\n".join(lines[-25:]))
             proc.wait()
         if proc.returncode == 0 and any("RETRAIN_DONE" in ln for ln in lines):
+            # Drop both caches: cache_data (eval tables, team lists) and
+            # cache_resource (loaded artifacts + league states), so the fresh
+            # user_retrain artifacts are picked up without restarting the app.
             st.cache_data.clear()
+            st.cache_resource.clear()
             st.success(t("retrain_done"))
         else:
             st.error(t("retrain_failed"))
@@ -1237,7 +1305,7 @@ def page_about():
 # main                                                                        #
 # --------------------------------------------------------------------------- #
 def main():
-    """Streamlit entry point: language selector + sidebar navigation between the three pages."""
+    """Streamlit entry point: language selector + sidebar navigation between the four pages."""
     st.set_page_config(page_title=t("page_title"), layout="wide")
     st.title(t("app_title"))
 
