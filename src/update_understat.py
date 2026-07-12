@@ -177,9 +177,12 @@ def fetch_league_season(
 
     payload = response.json()
     teams = payload.get("teams", {})
+    # understat has served "teams" both as a {team_id: team} mapping and as a
+    # plain list of team objects; accept either shape.
+    team_iter = teams.values() if isinstance(teams, dict) else teams
 
     rows = []
-    for team in teams.values():
+    for team in team_iter:
         rows.extend(_history_to_rows(league_name, season, team))
     return rows
 
