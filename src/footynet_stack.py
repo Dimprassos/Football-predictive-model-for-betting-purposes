@@ -1,4 +1,4 @@
-"""Stacking blend for FootyNet (chunk ST-1).
+"""Stacking blend for FootyNet.
 
 Learns a convex combination of member probability matrices (e.g. FootyNet + market)
 on the *validation* split by minimizing multiclass log loss, then applies the learned

@@ -29,6 +29,10 @@ papers/
 
 # Internal AI-workflow / planning files (not part of the deliverable).
 .agent/
+.agents/
+.claude/
+.codex/
+CLAUDE.md
 docs/
 SKILLS/
 CHANGELOG.md

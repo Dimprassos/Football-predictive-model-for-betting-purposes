@@ -1,10 +1,10 @@
 """Leakage-safe per-team match *sequences* for the deep-learning (FootyNet) model.
 
 The tabular models consume a single engineered feature vector per fixture. The
-recurrent model (see ``docs/DEEP_LEARNING_DESIGN.md``) instead needs, for each
-fixture, the **last K matches** of the home team and of the away team as an ordered
-sequence — so an LSTM can learn the form representation end-to-end (grounded in
-paper11 Danisik "LSTM many-to-one" and paper3 "last 1-5 matches").
+recurrent model instead needs, for each fixture, the **last K matches** of the home
+team and of the away team as an ordered sequence — so an LSTM can learn the form
+representation end-to-end (following Danisik et al.'s many-to-one LSTM over each
+team's recent matches).
 
 Leakage rule (identical to :func:`state_builder._recent_team_means` /
 ``streaming_block_probs_home_away``): a fixture on date ``D`` may only use a team's
@@ -27,7 +27,7 @@ import pandas as pd
 TEAM_MATCH_FEATURES = [
     "goals_for",
     "goals_against",
-    "result_win",      # one-hot of the match result for this team (paper11: prev-result one-hot)
+    "result_win",      # one-hot of the match result for this team
     "result_draw",
     "result_loss",
     "shots_for",
@@ -36,13 +36,13 @@ TEAM_MATCH_FEATURES = [
     "sot_against",
     "xg_for",          # understat (0.0 when missing; ~85% coverage)
     "xg_against",
-    "is_home",         # paper11: home / was-home flag
-    "points",          # 3 / 1 / 0 (paper11: obtained-points-percentage signal)
+    "is_home",         # was-home flag
+    "points",          # 3 / 1 / 0
     "days_rest",       # days since this team's previous match, capped, in weeks
 ]
 SEQ_FEATURE_DIM = len(TEAM_MATCH_FEATURES)
 
-DEFAULT_SEQUENCE_LENGTH = 5  # K (paper11 last-5; tunable 5-10)
+DEFAULT_SEQUENCE_LENGTH = 5  # K last matches per team (tunable 5-10)
 _REST_DEFAULT_DAYS = 7.0
 _REST_CAP_DAYS = 21.0
 

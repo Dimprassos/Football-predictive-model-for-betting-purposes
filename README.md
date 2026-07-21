@@ -83,9 +83,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> The deep-learning model (FootyNet) needs PyTorch, which is listed in
-> `requirements.txt`. If the default install is slow, the CPU-only wheel is enough:
-> `pip install torch --index-url https://download.pytorch.org/whl/cpu`.
+> PyTorch (used by the FootyNet deep-learning model) is installed by default as
+> part of `requirements.txt`. If the default install is slow, the CPU-only wheel
+> is enough: `pip install torch --index-url https://download.pytorch.org/whl/cpu`.
 
 ## Using the tool
 

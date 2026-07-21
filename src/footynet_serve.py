@@ -1,4 +1,4 @@
-"""Serve the trained FootyNet model for a single interactive fixture (chunk DL-5).
+"""Serve the trained FootyNet model for a single interactive fixture.
 
 Rebuilds, for a hypothetical ``home`` vs ``away`` fixture as of a given date, the
 *same* inputs FootyNet trained on — the static feature vector (base model probs +

@@ -1,21 +1,23 @@
 """FootyNet — a recurrent late-fusion 1X2 classifier (the deep-learning variant).
 
-Architecture (see ``docs/DEEP_LEARNING_DESIGN.md``, grounded in paper11/paper7/paper3):
+Architecture (grounded in the sequence-based match-prediction literature reviewed
+in the thesis' related-work chapter):
 
 * two **shared-weight LSTM encoders** over the home and away teams' last-K match
-  sequences (``src.sequence_data``) — many-to-one (paper11);
+  sequences (``src.sequence_data``) — the many-to-one design of Danisik et al.;
 * a **static MLP branch** over the existing engineered per-fixture features
-  (market logits, Elo, Dixon-Coles, understat, lineup) — paper11 future-work / paper1;
+  (market logits, Elo, Dixon-Coles, understat, lineup) — combining sequences with
+  engineered static features, an extension prior LSTM predictors leave as future work;
 * **late fusion** ``concat(h_home, h_away, |h_home - h_away|, h_static)`` → Dense → softmax(3)
-  (paper3: late fusion > early fusion).
+  (late fusion outperforms early fusion in prior fusion studies).
 
 Training: categorical cross-entropy (= multinomial log loss, the project's primary
 metric), early stopping on validation log loss, optional class weights / label
-smoothing for the draw imbalance (paper7), and post-hoc **temperature scaling**
+smoothing for the draw class imbalance, and post-hoc **temperature scaling**
 (Guo et al. 2017) — the same calibration philosophy as the rest of the pipeline.
 
-Notes/deviations: PyTorch ``nn.LSTM`` exposes only *inter-layer* dropout (Keras-style
-recurrent dropout from paper11 is not built in), so recurrent dropout is approximated
+Notes/deviations: PyTorch ``nn.LSTM`` exposes only *inter-layer* dropout (the
+Keras-style recurrent dropout of prior LSTM predictors is not built in), so it is approximated
 by inter-layer dropout (when >1 layer) plus dropout on the sequence embedding.
 Sequences are front-padded; the final LSTM hidden state therefore ends on a real
 match, and a no-history team is gated to a zero embedding via its mask.

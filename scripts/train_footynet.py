@@ -1,4 +1,4 @@
-"""Train + evaluate the recurrent FootyNet deep-learning model (chunk DL-3/DL-4).
+"""Train + evaluate the recurrent FootyNet deep-learning model.
 
 Pools the leakage-safe (static + sequence) datasets across leagues, standardizes the
 inputs, trains :class:`src.models.footynet.FootyNet` with early stopping + temperature
