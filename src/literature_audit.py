@@ -427,7 +427,7 @@ def run_audit(season_start: int, output_dir: Path = Path("artifacts")) -> pd.Dat
                 "roi": float(roi),
                 "profit": float(profit),
                 "avg_odds": float(avg_odds),
-                "paper_basis": "paper7_public_features_papaer1_form_fatigue",
+                "paper_basis": "paper7_public_features_paper1_form_fatigue",
             })
 
     out = pd.DataFrame(rows)
@@ -467,8 +467,8 @@ def run_audit(season_start: int, output_dir: Path = Path("artifacts")) -> pd.Dat
             "",
             "Paper basis:",
             "- paper7: time-based 1X2 evaluation, market benchmark, draw difficulty, value betting as secondary diagnostic.",
-            "- papaer1: form, fatigue/rest, momentum-style pre-match features.",
-            "- paper2/papaer3: richer event/spatial features are useful, but not available in the current free dataset.",
+            "- paper1: form, fatigue/rest, momentum-style pre-match features.",
+            "- paper2/paper3: richer event/spatial features are useful, but not available in the current free dataset.",
             "",
             f"Opening market logloss: {opening['logloss']}",
             f"Best audit row: {best['model']} / {best['feature_set']} / logloss {best['logloss']}",
@@ -484,15 +484,56 @@ def run_audit(season_start: int, output_dir: Path = Path("artifacts")) -> pd.Dat
     return out
 
 
+def run_multi_season(start: int, end: int, output_dir: Path = Path("artifacts")) -> pd.DataFrame:
+    """Run the fast audit for each season in [start, end] and write the summary CSV.
+
+    Produces ``literature_multi_season_summary_<start>_<end>.csv`` in the schema
+    consumed by ``src.thesis_report`` (opening market vs best ML row per season).
+    """
+    market_models = {"opening_market", "closing_market"}
+    rows: list[dict] = []
+    for season in range(start, end + 1):
+        audit = run_audit(season, output_dir)
+        opening = audit[audit["model"] == "opening_market"].iloc[0]
+        ml = audit[~audit["model"].isin(market_models)].copy()
+        ml["logloss"] = pd.to_numeric(ml["logloss"], errors="coerce")
+        best = ml.sort_values("logloss").iloc[0]
+        rows.append({
+            "season": opening["season"],
+            "opening_logloss": float(opening["logloss"]),
+            "best_ml_model": best["model"],
+            "best_ml_feature_set": best["feature_set"],
+            "best_ml_logloss": float(best["logloss"]),
+            "best_ml_minus_opening_logloss": float(best["logloss"]) - float(opening["logloss"]),
+            "best_ml_draw_recall": float(best["draw_recall"]),
+            "best_ml_roi": float(best["roi"]),
+        })
+    summary = pd.DataFrame(rows)
+    csv_path = output_dir / f"literature_multi_season_summary_{start}_{end}.csv"
+    summary.to_csv(csv_path, index=False)
+    print(f"\nWrote: {csv_path}")
+    return summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a fast literature-grounded audit without full retuning.")
     parser.add_argument("--season", type=int, default=2024, help="Season start year, e.g. 2024 for 2024-2025.")
+    parser.add_argument(
+        "--multi-season",
+        type=int,
+        nargs=2,
+        metavar=("START", "END"),
+        help="Run the audit for every season START..END and write the multi-season summary CSV.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    run_audit(args.season)
+    if args.multi_season:
+        run_multi_season(args.multi_season[0], args.multi_season[1])
+    else:
+        run_audit(args.season)
 
 
 if __name__ == "__main__":

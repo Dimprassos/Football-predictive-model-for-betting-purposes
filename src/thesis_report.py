@@ -174,7 +174,6 @@ def _robustness_rows(robustness: pd.DataFrame) -> list[dict]:
 
 def build_report(artifacts_dir: Path, experiment_name: str) -> tuple[str, pd.DataFrame]:
     model_summary = _latest_run(_read_csv(artifacts_dir / f"final_model_summary_{experiment_name}.csv"))
-    probability_quality = _latest_run(_read_csv(artifacts_dir / f"final_probability_quality_{experiment_name}.csv"))
     ablation = _latest_run(_read_csv(artifacts_dir / f"final_ablation_summary_{experiment_name}.csv"))
     robustness = _latest_run(_read_csv(artifacts_dir / f"final_betting_robustness_{experiment_name}.csv"))
     data_audit = _latest_run(_read_csv(artifacts_dir / f"final_data_enrichment_audit_{experiment_name}.csv"))
@@ -220,8 +219,8 @@ def build_report(artifacts_dir: Path, experiment_name: str) -> tuple[str, pd.Dat
         "This summary follows the literature-driven setup used in the project:",
         "",
         "- paper7: time-based 1X2 evaluation, market benchmark, draw difficulty, and ROI as a secondary diagnostic.",
-        "- papaer1: public pre-match form, rest/fatigue, momentum, and contextual features.",
-        "- paper2 and papaer3: richer event/spatial/player data can improve performance, but those data are not present in the current football-data dataset.",
+        "- paper1: public pre-match form, rest/fatigue, momentum, and contextual features.",
+        "- paper2 and paper3: richer event/spatial/player data can improve performance, but those data are not present in the current football-data dataset.",
         "- paper8: very high reported accuracy is treated as non-comparable unless leakage/target/split assumptions are clear.",
         "",
         "The deployable betting benchmark is the opening market. Closing market is used only as a non-bettable reference.",
@@ -286,7 +285,7 @@ def build_report(artifacts_dir: Path, experiment_name: str) -> tuple[str, pd.Dat
         "",
         "## Thesis Interpretation",
         "",
-        "The current results support a realistic negative finding rather than a profitable-bot claim. With public pre-match data and opening odds, ML models mostly learn the market and do not consistently improve logloss/Brier/ROI. Rolling defensive features and class balancing can change class behavior, especially draw recall, but they do not create a stable probability edge. Stronger performance likely requires richer event, spatial, lineup, or player-level data, consistent with paper2 and papaer3.",
+        "The current results support a realistic negative finding rather than a profitable-bot claim. With public pre-match data and opening odds, ML models mostly learn the market and do not consistently improve logloss/Brier/ROI. Rolling defensive features and class balancing can change class behavior, especially draw recall, but they do not create a stable probability edge. Stronger performance likely requires richer event, spatial, lineup, or player-level data, consistent with paper2 and paper3.",
         "",
     ]
 

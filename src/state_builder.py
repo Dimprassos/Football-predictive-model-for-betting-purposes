@@ -572,8 +572,11 @@ def streaming_block_probs_home_away(
     aux = []
     raw_odds = []
 
-    predict_df = predict_df.sort_values("date")
-    full_df = full_df.sort_values("date")
+    # Stable sort: keep the caller's row order within a date. The unstable default
+    # permuted same-date ties, so the returned arrays no longer lined up with
+    # match-info records built from the (already date-sorted) input frame.
+    predict_df = predict_df.sort_values("date", kind="stable")
+    full_df = full_df.sort_values("date", kind="stable")
     predict_dates = sorted(predict_df["date"].unique())
     if len(predict_dates) == 0:
         return (np.zeros((0, 3)), np.zeros((0,), dtype=int), np.zeros((0, 3)), np.zeros((0, len(FEATURE_COLUMNS) - 6)), np.zeros((0, 3)))

@@ -67,7 +67,7 @@ def _build_split(split_df, full_df, params, k, odds_kwargs, team_sequences) -> d
     market = ensure_market_probs(probs, mkt)
     static = np.asarray(build_meta_features(probs, market, aux), dtype=float)
 
-    ordered = split_df.sort_values("date")  # streaming's row order
+    ordered = split_df.sort_values("date", kind="stable")  # streaming's row order
     seqs = build_fixture_sequences(full_df, ordered, k=k, team_sequences=team_sequences)
 
     y = np.asarray(y, dtype=int)
